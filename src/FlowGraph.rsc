@@ -13,21 +13,56 @@ import vis::Render;
 alias OFG = rel[loc from, loc to];
 
 OFG buildGraph(FlowProgram p) 
-  = /*{ <as[i], fps[i]> | 
-        newAssign(x, cl, c, as) <- p.statements, 
-        constructor(c, fps) <- p.decls,
-        i <- index(as) 
-    }*/
-//  + { <cl + "this", x> | newAssign(x, cl, _, _) <- p.statements }
-   /*{ <as[i], fps[i]> | 
-        call(_, _, _, m, as) <- p.statements, 
-        method(m, fps) <- p.decls,
-        i <- index(as) 
-    }
-  +*/ { <x, m + "return"> |
-        call(x, _, _, m, _) <- p.statements,
-        method(m, _) <- p.decls }
-  /* + ... etc */ 
+  = {}
+  	// x = new c(as1, as2, ...)
+  	// constructor def c(fps1, fps2, ...)
+	  	// link values (as) to parameters (fps)
+	  	//*
+	  	+ { <as[i], fps[i]> | 
+	        newAssign(x, _, c, as) <- p.statements, 
+	        constructor(c, fps) <- p.decls,
+	        i <- index(as) 
+	    }
+	    //*/
+	    // link c.this to x
+	    //*
+	    + { <c + "this", x> |
+	        newAssign(x, _, c, as) <- p.statements
+	    }
+	    //*/
+	
+	// x = y
+		// link y to x
+		//*
+		+ { <cl + "this", x> |
+			assign(x, _, y) <- p.statements
+		}
+		//*/
+		
+	// x = y.m(as1, as2, ...)
+	// method def m(fps1, fps2, ...)
+		// link values (as) to parameters (fps)
+	    //*
+	    + { <as[i], fps[i]> | 
+	        call(x, _, y, m, as) <- p.statements, 
+	        method(m, fps) <- p.decls,
+	        i <- index(as) 
+	    }
+  		//*/
+  		// link m.return to x
+  		//*
+  		+ { <m + "return", x> |
+        	call(x, _, y, m, as) <- p.statements,
+        	method(m, fps) <- p.decls
+        }
+  		//*/
+  		// link y to m.this
+  		//*
+  		+ { <y, m + "this"> |
+        	call(x, _, y, m, as) <- p.statements,
+        	method(m, fps) <- p.decls
+        }
+        //*/
   ;
    
 OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
