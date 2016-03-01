@@ -34,7 +34,7 @@ OFG buildGraph(FlowProgram p)
 	// x = y
 		// link y to x
 		//*
-		+ { <cl + "this", x> |
+		+ { <y, x> |
 			assign(x, _, y) <- p.statements
 		}
 		//*/
@@ -50,7 +50,7 @@ OFG buildGraph(FlowProgram p)
 	    }
   		//*/
   		// link m.return to x
-  		//*
+  		//* !! possible problem: for a statement "y.m(as1, as2, ...)", we have |id:///| as value for x, should this case be ignored?
   		+ { <m + "return", x> |
         	call(x, _, y, m, as) <- p.statements,
         	method(m, fps) <- p.decls
