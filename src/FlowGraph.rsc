@@ -13,13 +13,18 @@ import vis::Render;
 alias OFG = rel[loc from, loc to];
 
 OFG buildGraph(FlowProgram p) 
-  = { <as[i], fps[i]> | 
+  = /*{ <as[i], fps[i]> | 
         newAssign(x, cl, c, as) <- p.statements, 
-        constructor(c, fps) <- p.decls, i <- index(as) 
+        constructor(c, fps) <- p.decls,
+        i <- index(as) 
+    }*/
+//  + { <cl + "this", x> | newAssign(x, cl, _, _) <- p.statements }
+   { <as[i], fps[i]> | 
+        call(x, _, m, as) <- p.statements, 
+        method(m, fps) <- p.decls,
+        i <- index(as) 
     }
-  + { <cl + "this", x> | newAssign(x, cl, _, _) <- p.statements }
-  + { <as[i], fps[i]> |
-        assign(x,  
+  /*+ { <cl, x> | assign(x, _, cl) <- p.statements }*/
   /* + ... etc */ 
   ;
    
