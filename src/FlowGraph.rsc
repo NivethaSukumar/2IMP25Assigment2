@@ -19,12 +19,14 @@ OFG buildGraph(FlowProgram p)
         i <- index(as) 
     }*/
 //  + { <cl + "this", x> | newAssign(x, cl, _, _) <- p.statements }
-   { <as[i], fps[i]> | 
-        call(x, _, m, as) <- p.statements, 
+   /*{ <as[i], fps[i]> | 
+        call(_, _, _, m, as) <- p.statements, 
         method(m, fps) <- p.decls,
         i <- index(as) 
     }
-  /*+ { <cl, x> | assign(x, _, cl) <- p.statements }*/
+  +*/ { <x, m + "return"> |
+        call(x, _, _, m, _) <- p.statements,
+        method(m, _) <- p.decls }
   /* + ... etc */ 
   ;
    
