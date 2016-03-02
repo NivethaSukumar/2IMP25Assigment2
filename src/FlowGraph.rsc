@@ -64,16 +64,25 @@ OFG buildGraph(FlowProgram p)
         }
         //*/
   ;
-   
+
+rel[loc, loc] buildGen(FlowProgram p)
+	= { <cs + "this", cl> |
+		newAssign(_, cl, cs, _) <- p.statements
+	};
+
 OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
   OFG IN = { };
   OFG OUT = gen + (IN - kill);
-  gi = g<to,from>;
+  gi = g<to,from>; // gi inverted relation of g
   set[loc] pred(loc n) = gi[n];
   set[loc] succ(loc n) = g[n];
   
   solve (IN, OUT) {
-    IN = { <n,\o> | n <- carrier(g), p <- (back ? pred(n) : succ(n)), \o <- OUT[p] };
+    IN = { <n,\o> |
+    	n <- carrier(g),
+    	p <- (back ? pred(n) : succ(n)),
+    	\o <- OUT[p]
+    };
     OUT = gen + (IN - kill);
   }
   
@@ -85,6 +94,43 @@ public void drawDiagram(M3 m) {
   edges = [edge("<to>", "<from>") | <from,to> <- m@extends ];  
   
   render(graph(classFigures, edges, hint("layered"), std(gap(10)), std(font("Bitstream Vera Sans")), std(fontSize(8))));
+}
+
+public void drawDiagram(OFG p, M3 m) {
+  rel[loc, loc, loc] associations = {
+  	<field, class1, class2> |
+  	<class1, field> <- m@containment,
+  	<field, class2> <- p,
+  	field <- fields(m)
+  };
+  
+  rel[loc, loc, loc] dependencies = {
+  	<var, class1, class2> |
+ 	<method, var> <- m@containment,
+ 	<class1, method> <- m@containment,
+  	<var, class2> <- p,
+  	var <- variables(m)+parameters(m),
+  	class2 <- classes(m)
+  };
+  
+  classFigures = [box(text("<cl.path[1..]>"), id("<cl>")) | cl <- classes(m)]; 
+  generalisationEdges
+  	= [edge("<to>", "<from>") | <from,to> <- m@extends ];  
+  realisationEdges
+  	= [edge("<to>", "<from>") | <from,to> <- m@implements ];  
+  associationEdges
+  	= [edge("<to>", "<from>") | <_,from,to> <- associations ];
+  dependencyEdges
+  	= [edge("<to>", "<from>") | <_,from,to> <- dependencies ];
+  
+  render(graph(
+  	classFigures,
+  	dependencyEdges,
+  	hint("layered"),
+  	std(gap(10)),
+  	std(font("Bitstream Vera Sans")),
+  	std(fontSize(8))
+  ));
 }
  
 public str dotDiagram(M3 m) {
