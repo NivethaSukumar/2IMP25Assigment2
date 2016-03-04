@@ -108,6 +108,7 @@ public str dotOFGDiagram(OFG g, OFG g2) {
   }
   
   return "digraph classes {
+         '  ratio=\"fill\"
          '  graph []
          '  fontname = \"Bitstream Vera Sans\"
          '  fontsize = 8
@@ -140,10 +141,10 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
     class2 <- classes(m)
   };
     
-  str classString(loc cl) {
+  str classString(loc cl, bool interface) {
     return "\"N<cl>\" [
     '  label = \<\<TABLE BORDER=\"0\" ALIGN=\"LEFT\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\"\>
-    '    \<TR\>\<TD\><cl.path[1..]>\</TD\>\</TR\>
+    '    \<TR\>\<TD\><if(interface){>«interface»\<BR /\><}><if(\abstract() in m@modifiers[cl]){>\<i\><}><cl.path[1..]><if(\abstract() in m@modifiers[cl]){>\</i\><}>\</TD\>\</TR\>
     '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, field> <- m@containment, <field, \type> <- m@typeDependency, field <- fields(m)) {><fieldString(field, \type)>\<BR /\><}>\</TD\>\</TR\>
     '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, const> <- m@containment, const <- constructors(m)) {><constString(const)>\<BR /\><}><for (<cl, meth> <- m@containment, meth <- methods(m), meth.scheme == "java+method") {><methString(meth)>\<br /\><}>\</TD\>\</TR\>
     '  \</TABLE\>\>
@@ -165,35 +166,37 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
   
   str fieldString(loc field, loc \type) {
     bool isStatic = (\static() in m@modifiers[field]);
-    return "<if(isStatic){>\<u\><}><getModifier(field)> <field.file> : <\type.file><if(isStatic){>\</u\><}>";
+    return "<getModifier(field)> <if(isStatic){>\<u\><}><field.file><if(isStatic){>\</u\><}> : <\type.file>";
   }
   
   str methString(loc meth) {
     bool isStatic = (\static() in m@modifiers[meth]);
+    bool isAbstract = (\abstract() in m@modifiers[meth]);
     str name = toList(((m@names<qualifiedName, simpleName>)[meth]))[0];
-    list[loc] params = toList({params | method(const, params) <- p.decls})[0];
+    list[loc] params = toList({params | method(meth, params) <- p.decls})[0];
     str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <\type.file>, <}>";
-    return "<if(isStatic){>\<u\><}><getModifier(meth)> <name>(<paramStr[..-2]>)<if(isStatic){>\</u\><}>";
+    return "<getModifier(meth)> <if(isStatic){>\<u\><}><if(isAbstract){>\<i\><}><name>(<paramStr[..-2]>)<if(isAbstract){>\</i\><}><if(isStatic){>\</u\><}>";
   }
 
   return "digraph classes {
-         '  graph []
+         '  ratio=\"fill\"
+         '  graph [splines = \"ortho\"]
          '  fontname = \"Bitstream Vera Sans\"
          '  fontsize = 8
          '  node [ fontname = \"Bitstream Vera Sans\" fontsize = 8 shape = \"plaintext\" margin=\"0\" ]
          '  edge [ fontname = \"Bitstream Vera Sans\" fontsize = 8 ]
          '
          '  <for (cl <- classes(m)) {>
-         '  <classString(cl)>
+         '  <classString(cl, false)>
          '  <}>
          '  <for (cl <- interfaces(m)) {>
-         '  <classString(cl)>
+         '  <classString(cl, true)>
          '  <}>
          '
          '  <for (<to, from> <- m@extends) {>
          '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"empty\"]<}>
          '  <for (<to, from> <- m@implements) {>
-         '  \"N<from>\" -\> \"N<to>\" [style=\"dashed\", arrowhead=\"empty\"]<}>
+         '  \"N<to>\" -\> \"N<from>\" [style=\"dashed\", arrowhead=\"empty\"]<}>
          '  <for (<to, from> <- associations) {>
          '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"vee\"]<}>
          '  <for (<to, from> <- dependencies - associations) {>
