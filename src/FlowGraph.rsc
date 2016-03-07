@@ -19,6 +19,8 @@ import String;
 
 alias OFG = rel[loc from, loc to];
 
+data Arity = inf() | fixed(int size);
+
 OFG buildGraph(FlowProgram p) 
   = {}
   	// x = new c(as1, as2, ...)
@@ -79,7 +81,12 @@ rel[loc, loc] buildForwardGen(FlowProgram p)
 	
 rel[loc, loc] buildBackwardGen(FlowProgram p)
     = { <s, c> |
-        assign(t, c, s) <- p.statements
+        assign(t, c, s) <- p.statements,
+        c.path != "/"
+      }
+    + { <m + "return", c> |
+        call(_, c, _, m, _) <- p.statements,
+        c.path != "/"
       };
 
 OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
@@ -114,12 +121,12 @@ set[Decl] methodParams = {
 		<- createAstsFromEclipseProject(|project://eLib|, true)
 };
 
-public str dotOFGDiagram(OFG g, OFG g2, OFG g3) {
+public str dotOFGDiagram(OFG g, OFG g2) {
   rel[loc, loc] filterG = { <from, to> | <from, to> <- g, !isEmpty(g2[to]), to.path != "/" };
   set[loc] elems = carrier(filterG);
   
   str getLabel(l) {
-    list[loc] s = toList(g3[l]);
+    list[loc] s = toList(g2[l]);
     str ret = "<for (e <- s) {><e.file>, \\l<}>";
     return ret[..-4];
   }
@@ -140,24 +147,72 @@ public str dotOFGDiagram(OFG g, OFG g2, OFG g3) {
          '}";
 }
 
-public str dotDiagram(OFG g, FlowProgram p, M3 m) {
+public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
 
-  rel[loc, loc] associations = {
-    <class1, class2> |
+  rel[loc, loc, loc] individualAssociations = {
+    <field, class1, class2> |
     <class1, field> <- m@containment,
     <field, class2> <- g,
     field <- fields(m)
   };
   
+  rel[loc, loc] associations = {
+    <class1, class2> |
+    <_, class1, class2> <- individualAssociations
+  };
+  
+  str multiplicity(tuple[loc to, loc from] edge) {
+    tuple[Arity min, Arity max] m = calcMultiplicity(invert(individualAssociations)[edge.to][edge.from]);
+    return "<arityToString(m.min)>..<arityToString(m.max)>";
+  }
+  
+  str arityToString(inf()) = "*";
+  str arityToString(fixed(int a)) = "<a>";
+  
+  set[str] containerClasses =  {
+     "/java/util/Map"
+    ,"/java/util/HashMap"
+    ,"/java/util/Collection"
+    ,"/java/util/Set"
+    ,"/java/util/HashSet"
+    ,"/java/util/LinkedHashSet"
+    ,"/java/util/List"
+    ,"/java/util/ArrayList"
+    ,"/java/util/LinkedList"
+  };
+  
+  tuple[Arity, Arity] calcMultiplicity(set[loc] fields) {
+    Arity min = fixed(0);
+    Arity max = fixed(0);
+    for (loc field <- fields) {
+        loc \type = toList(m@typeDependency[field])[0];
+        if (\type.path in containerClasses) {
+            max = inf();
+        } else {
+            max = arityPlus(max, fixed(1));
+        }
+    }
+    return <min, max>;
+  }
+  
+  Arity arityPlus(fixed(int a), fixed(int b)) = fixed(a + b);
+  Arity arityPlus(inf(), fixed(int b)) = inf();
+  Arity arityPlus(fixed(int a), inf) = inf;
+  
   rel[loc, loc] identity = { <class, class> | class <- carrier(g) };
   
-  rel[loc, loc] dependencies = {
-    <class1, class2> |
+  rel[loc, loc, loc] individualDependencies = {
+    <var, class1, class2> |
     <method, var> <- m@containment,
     <class1, method> <- m@containment,
     <var, class2> <- g,
     var <- variables(m) + parameters(m),
     class2 <- classes(m)
+  };
+  
+  rel[loc, loc] dependencies = {
+    <class1, class2> |
+    <_, class1, class2> <- individualDependencies
   } - associations - m@extends<to, from> - identity;
   
   
@@ -190,10 +245,43 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
     return "\"N<cl>\" [
     '  label = \<\<TABLE BORDER=\"0\" ALIGN=\"LEFT\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\"\>
     '    \<TR\>\<TD\><if(interface){>«interface»\<BR /\><}><if(\abstract() in m@modifiers[cl]){>\<i\><}><cl.path[1..]><if(\abstract() in m@modifiers[cl]){>\</i\><}>\</TD\>\</TR\>
-    '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, field> <- m@containment, <field, \type> <- m@typeDependency, field <- fields(m)) {><fieldString(field, \type)>\<BR /\><}>\</TD\>\</TR\>
-    '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, const> <- m@containment, const <- constructors(m)) {><constString(const)>\<BR /\><}><for (<cl, meth> <- m@containment, meth <- methods(m), meth.scheme == "java+method") {><methString(meth)>\<br /\><}>\</TD\>\</TR\>
+    '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, field> <- m@containment, <field, \type> <- m@typeDependency, field <- fields(m)) {><fieldString(cl, field, \type)>\<BR /\><}>\</TD\>\</TR\>
+    '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, const> <- m@containment, const <- constructors(m)) {><constString(cl, const)>\<BR /\><}><for (<cl, meth> <- m@containment, meth <- methods(m), meth.scheme == "java+method") {><methString(cl, meth)>\<br /\><}>\</TD\>\</TR\>
     '  \</TABLE\>\>
     ']";
+  }
+  
+  str getVarType(loc class, loc var, loc \type) {
+    if (\type.path in containerClasses) {
+        rel[loc, loc, loc] individualRel = {};
+        rel[loc, loc] \rel = {};
+        if (var.scheme == "java+field") {
+            individualRel = individualAssociations;
+            if (\filter) {
+                \rel = filteredAssociations;
+            } else {
+                \rel = associations;
+            }
+        } else {
+            individualRel = individualDependencies;
+            if (\filter) {
+                \rel = filteredDependencies;
+            } else {
+                \rel = dependencies;
+            }
+        }
+        set[loc] canContain = { to | <var, class, to> <- individualRel,
+                                     <class, to> <- \rel};
+        
+        return "<\type.file>&lt;<typeListToString(canContain)>&gt;";
+    } else {
+        return "<\type.file>";
+    }
+  }
+  
+  str typeListToString(set[loc] \list) {
+    str ret = "<for(\type <- \list) {><\type.file>|<}>";
+    return ret[0..-1];
   }
   
   str getModifier(loc decl) {
@@ -202,19 +290,19 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
            if (\protected() in m@modifiers[decl]) "#"; else "~";
   }
   
-  str constString(loc const) {
+  str constString(loc class, loc const) {
     str name = toList(((m@names<qualifiedName, simpleName>)[const]))[0];
     list[loc] params = toList({params | constructor(const, params) <- p.decls})[0];
-    str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <\type.file>, <}>";
+    str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <getVarType(class, param, \type)>, <}>";
     return "<getModifier(const)> <name>(<paramStr[..-2]>)";
   }
   
-  str fieldString(loc field, loc \type) {
+  str fieldString(loc class, loc field, loc \type) {
     bool isStatic = (\static() in m@modifiers[field]);
-    return "<getModifier(field)> <if(isStatic){>\<u\><}><field.file><if(isStatic){>\</u\><}> : <\type.file>";
+    return "<getModifier(field)> <if(isStatic){>\<u\><}><field.file><if(isStatic){>\</u\><}> : <getVarType(class, field, \type)>";
   }
   
-  str methString(loc meth) {
+  str methString(loc class, loc meth) {
     bool isStatic = (\static() in m@modifiers[meth]);
     bool isAbstract = (\abstract() in m@modifiers[meth]);
     str name = toList(((m@names<qualifiedName, simpleName>)[meth]))[0];
@@ -232,15 +320,24 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
 		paramLoc <- paramLocs,
 		paramType <- paramTypes[paramLoc]
 	];
-    print (params);
-    print("\n");
-    str paramStr = "<for (<param, \type> <- params) {><param.file> : <\type>, <}>";
+    str paramStr = "<for (<param, \type> <- params) {><param.file> : <getVarType(class, param, \type)>, <}>";
     return "<getModifier(meth)> <if(isStatic){>\<u\><}><if(isAbstract){>\<i\><}><name>(<paramStr[..-2]>)<if(isAbstract){>\</i\><}><if(isStatic){>\</u\><}>";
+  }
+  
+  rel[loc, loc] ass = {};
+  rel[loc, loc] dep = {};
+  
+  if (\filter) {
+    ass = filteredAssociations;
+    dep = filteredDependencies;
+  } else {
+    ass = associations;
+    dep = dependencies;
   }
 
   return "digraph classes {
          '  ratio=\"fill\"
-         '  graph [splines = \"ortho\"]
+         '  graph []
          '  fontname = \"Bitstream Vera Sans\"
          '  fontsize = 8
          '  node [ fontname = \"Bitstream Vera Sans\" fontsize = 8 shape = \"plaintext\" margin=\"0\" ]
@@ -257,23 +354,24 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
          '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"empty\"]<}>
          '  <for (<to, from> <- m@implements) {>
          '  \"N<to>\" -\> \"N<from>\" [style=\"dashed\", arrowhead=\"empty\"]<}>
-         '  <for (<to, from> <- associations) {>
-         '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"vee\"]<}>
-         '  <for (<to, from> <- dependencies) {>
+         '  <for (<to, from> <- ass) {>
+         '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"vee\" headlabel=\"<multiplicity(<from, to>)>\"]<}>
+         '  <for (<to, from> <- dep) {>
          '  \"N<to>\" -\> \"N<from>\" [style=\"dashed\", arrowhead=\"vee\"]<}>
          '}";
 }
 
-public void showDot(OFG g, FlowProgram p, M3 m) = showDot(g, p, m, |home:///<m.id.authority>.dot|);
+public void showDot(OFG g, FlowProgram p, M3 m, bool \filter) = 
+        showDot(g, p, m, \filter, |home:///<m.id.authority>.dot|);
  
-public void showDot(OFG g, FlowProgram p, M3 m, loc out) {
-  writeFile(out, dotDiagram(g, p, m));
+public void showDot(OFG g, FlowProgram p, M3 m, bool \filter, loc out) {
+  writeFile(out, dotDiagram(g, p, m, \filter));
 }
 
-public void showOFG(OFG g, OFG g2, OFG g3) = showOFG(g, g2, g3, |home:///OFG.dot|);
+public void showOFG(OFG g, OFG g2) = showOFG(g, g2, |home:///OFG.dot|);
 
-public void showOFG(OFG g, OFG g2, OFG g3, loc out) {
-  writeFile(out, dotOFGDiagram(g, g2, g3));
+public void showOFG(OFG g, OFG g2, loc out) {
+  writeFile(out, dotOFGDiagram(g, g2, \filter));
 }
 
 public void showOFG() {
@@ -282,13 +380,14 @@ public void showOFG() {
     g = buildGraph(p);
     g2 = prop(g, buildForwardGen(p), {}, true);
     g3 = prop(g, buildBackwardGen(p), {}, false);
-    showOFG(g, g2, g3);
+    showOFG(g, g2 + g3);
 }
 
-public void showDot() {
+public void showDot(bool \filter) {
     m = createM3FromEclipseProject(|project://eLib|);
     p = createOFG(|project://eLib|);
     g = buildGraph(p);
     g2 = prop(g, buildForwardGen(p), {}, true);
-    showDot(g2, p, m);
+    g3 = prop(g, buildBackwardGen(p), {}, false);
+    showDot(g2 + g3, p, m, \filter);
 }
