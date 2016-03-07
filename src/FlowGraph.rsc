@@ -8,6 +8,7 @@ import lang::java::m3::Core;
 import analysis::m3::Core;
 import lang::java::jdt::m3::AST;
 import lang::java::jdt::m3::Core;
+import lang::ofg::ast::FlowLanguage;
 
 import IO;
 import vis::Figure; 
@@ -91,7 +92,7 @@ rel[loc, loc] buildBackwardGen(FlowProgram p)
 OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
   OFG IN = { };
   OFG OUT = gen + (IN - kill);
-  gi = g<to,from>; // gi inverted relation of g
+  gi = g<to,from>; // gi is relation g inverted
   set[loc] pred(loc n) = gi[n];
   set[loc] succ(loc n) = g[n];
   
@@ -107,6 +108,28 @@ OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
 }
 
 
+set[Decl] createMethodParams(set[Declaration] asts) = {
+	Decl::method(
+		mfree@decl,
+		[
+			pfree@decl |
+			pfree:parameter(t,_,_) <- params
+		]
+	) |
+	/mfree:Declaration::method(_,_, list[Declaration] params, _, _)
+		<- asts
+};
+set[Decl] createConstParams(set[Declaration] asts) = {
+	Decl::constructor(
+		mfree@decl,
+		[
+			pfree@decl |
+			pfree:parameter(t,_,_) <- params
+		]
+	) |
+	/mfree:Declaration::constructor(_, list[Declaration] params, _, _)
+		<- asts
+};
 
 public str dotOFGDiagram(OFG g, OFG g2) {
   rel[loc, loc] filterG = { <from, to> | <from, to> <- g, !isEmpty(g2[to]), to.path != "/" };
@@ -246,12 +269,40 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
     return "\"N<cl>\" [
     '  label = \<\<TABLE BORDER=\"0\" ALIGN=\"LEFT\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\"\>
     '    \<TR\>\<TD\><if(interface){>«interface»\<BR /\><}><if(\abstract() in m@modifiers[cl]){>\<i\><}><cl.path[1..]><if(\abstract() in m@modifiers[cl]){>\</i\><}>\</TD\>\</TR\>
-    '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, field> <- m@containment, <field, \type> <- m@typeDependency, field <- fields(m)) {><fieldString(cl, field, \type)>\<BR /\><}>\</TD\>\</TR\>
+    '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, field> <- m@containment, \type <- m@types[field], field <- fields(m)) {><fieldString(cl, field, \type)>\<BR /\><}>\</TD\>\</TR\>
     '    \<TR\>\<TD ALIGN=\"LEFT\" BALIGN=\"LEFT\"\><for (<cl, const> <- m@containment, const <- constructors(m)) {><constString(cl, const)>\<BR /\><}><for (<cl, meth> <- m@containment, meth <- methods(m), meth.scheme == "java+method") {><methString(cl, meth)>\<br /\><}>\</TD\>\</TR\>
     '  \</TABLE\>\>
     ']";
   }
   
+  str getVarType(_, _, \object())       = "Object";
+  str getVarType(_, _, \int())          = "int";
+  str getVarType(_, _, \float())        = "float";
+  str getVarType(_, _, \double())       = "double";
+  str getVarType(_, _, \short())        = "short";
+  str getVarType(_, _, \boolean())      = "boolean";
+  str getVarType(_, _, \char())         = "char";
+  str getVarType(_, _, \byte())         = "byte";
+  str getVarType(_, _, \long())         = "long";
+  str getVarType(_, _, \void())         = "void";
+  str getVarType(_, _, \null())         = "null";
+  str getVarType(_, _, \unresolved())   = "unresolved";
+  
+  // not sure what to do with these types...
+  str getVarType(_, _, \wildcard())     = "fuck wildcard";
+  str getVarType(_, _, \capture())      = "fuck capture";
+  str getVarType(_, _, \intersection()) = "fuck intersection";
+  str getVarType(_, _, \union())        = "fuck union";
+  str getVarType(_, _, \typeVariable()) = "fuck typeVariable";
+  
+  // array needs some special attention:
+  str getVarType(class, var, \array(component, dimension)) = getVarType(class, var, component)+"<for(i<-[0..dimension]) {>[]<}>";
+  
+  // other TypeSymbols have a reference to a loc
+  str getVarType(loc class, loc var, TypeSymbol \type) {
+  	return getVarType(class, var, \type.decl);
+  }
+  	
   str getVarType(loc class, loc var, loc \type) {
     if (\type.path in containerClasses) {
         rel[loc, loc, loc] individualRel = {};
@@ -292,25 +343,26 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
   }
   
   str constString(loc class, loc const) {
-    set[str] names = (m@names<qualifiedName, simpleName>)[const];
-    str name = "";
-    if (isEmpty(names)) {
-        name = "<const>";
-    } else {
-       name = toList(names)[0];
-    }
-    set[list[loc]] possibleParams = {params | constructor(const, params) <- p.decls};
-    list[loc] params = [];
-    if (isEmpty(possibleParams)) {
-        params = [];
-    } else {
-        params = toList(possibleParams)[0];
-    }
-    str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <getVarType(class, param, \type)>, <}>";
+    str name = toList(((m@names<qualifiedName, simpleName>)[const]))[0];
+    rel[loc, TypeSymbol] paramTypes =
+    {
+		<param, paramType> |
+		param <- m@containment[const],
+		param.scheme == "java+parameter",
+		paramType <- m@types[param]
+	};
+	list[tuple[loc, TypeSymbol]] params =
+	[
+		<paramLoc, paramType> |
+		constructor(const, paramLocs) <- constParams,
+		paramLoc <- paramLocs,
+		paramType <- paramTypes[paramLoc]
+	];
+    str paramStr = "<for (<param, \type> <- params) {><param.file> : <getVarType(class, param, \type)>, <}>";
     return "<getModifier(const)> <name>(<paramStr[..-2]>)";
   }
   
-  str fieldString(loc class, loc field, loc \type) {
+  str fieldString(loc class, loc field, TypeSymbol \type) {
     bool isStatic = (\static() in m@modifiers[field]);
     return "<getModifier(field)> <if(isStatic){>\<u\><}><field.file><if(isStatic){>\</u\><}> : <getVarType(class, field, \type)>";
   }
@@ -319,14 +371,21 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
     bool isStatic = (\static() in m@modifiers[meth]);
     bool isAbstract = (\abstract() in m@modifiers[meth]);
     str name = toList(((m@names<qualifiedName, simpleName>)[meth]))[0];
-    set[list[loc]] possibleParams = {params | method(meth, params) <- p.decls};
-    list[loc] params = [];
-    if (isEmpty(possibleParams)) {
-        params = [];
-    } else {
-        params = toList(possibleParams)[0];
-    }
-    str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <getVarType(class, param, \type)>, <}>";
+    rel[loc, TypeSymbol] paramTypes =
+    {
+		<param, paramType> |
+		param <- m@containment[meth],
+		param.scheme == "java+parameter",
+		paramType <- m@types[param]
+	};
+	list[tuple[loc, TypeSymbol]] params =
+	[
+		<paramLoc, paramType> |
+		method(meth, paramLocs) <- methodParams,
+		paramLoc <- paramLocs,
+		paramType <- paramTypes[paramLoc]
+	];
+    str paramStr = "<for (<param, \type> <- params) {><param.file> : <getVarType(class, param, \type)>, <}>";
     return "<getModifier(meth)> <if(isStatic){>\<u\><}><if(isAbstract){>\<i\><}><name>(<paramStr[..-2]>)<if(isAbstract){>\</i\><}><if(isStatic){>\</u\><}>";
   }
   
@@ -397,3 +456,7 @@ public void showDot(bool \filter) {
     g3 = prop(g, buildBackwardGen(p), {}, false);
     showDot(g2 + g3, p, m, \filter);
 }
+
+set[Declaration] asts = createAstsFromEclipseProject(|project://CyberNeko1.9.21|, true);
+set[Decl] methodParams = createMethodParams(asts);
+set[Decl] constParams  = createConstParams(asts);
