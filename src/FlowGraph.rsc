@@ -109,7 +109,7 @@ OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
 }
 
 
-set[Decl] methodParams = {
+set[Decl] createMethodParams(set[Declaration] asts) = {
 	Decl::method(
 		mfree@decl,
 		[
@@ -118,9 +118,9 @@ set[Decl] methodParams = {
 		]
 	) |
 	/mfree:Declaration::method(_,_, list[Declaration] params, _, _)
-		<- createAstsFromEclipseProject(|project://eLib|, true)
+		<- asts
 };
-set[Decl] constParams = {
+set[Decl] createConstParams(set[Declaration] asts) = {
 	Decl::constructor(
 		mfree@decl,
 		[
@@ -129,7 +129,7 @@ set[Decl] constParams = {
 		]
 	) |
 	/mfree:Declaration::constructor(_, list[Declaration] params, _, _)
-		<- createAstsFromEclipseProject(|project://eLib|, true)
+		<- asts
 };
 
 public str dotOFGDiagram(OFG g, OFG g2) {
@@ -443,3 +443,7 @@ public void showDot(bool \filter) {
     g3 = prop(g, buildBackwardGen(p), {}, false);
     showDot(g2 + g3, p, m, \filter);
 }
+
+set[Declaration] asts = createAstsFromEclipseProject(|project://eLib|, true);
+set[Decl] methodParams = createMethodParams(asts);
+set[Decl] constParams  = createConstParams(asts);
