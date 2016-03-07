@@ -8,6 +8,7 @@ import lang::java::m3::Core;
 import analysis::m3::Core;
 import lang::java::jdt::m3::AST;
 import lang::java::jdt::m3::Core;
+import lang::ofg::ast::FlowLanguage;
 
 import IO;
 import vis::Figure; 
@@ -84,7 +85,7 @@ rel[loc, loc] buildBackwardGen(FlowProgram p)
 OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
   OFG IN = { };
   OFG OUT = gen + (IN - kill);
-  gi = g<to,from>; // gi inverted relation of g
+  gi = g<to,from>; // gi is relation g inverted
   set[loc] pred(loc n) = gi[n];
   set[loc] succ(loc n) = g[n];
   
@@ -101,6 +102,17 @@ OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
 }
 
 
+set[Decl] methodParams = {
+	Decl::method(
+		mfree@decl,
+		[
+			pfree@decl |
+			pfree:parameter(t,_,_) <- params
+		]
+	) |
+	/mfree:Declaration::method(_,_, list[Declaration] params, _, _)
+		<- createAstsFromEclipseProject(|project://eLib|, true)
+};
 
 public str dotOFGDiagram(OFG g, OFG g2, OFG g3) {
   rel[loc, loc] filterG = { <from, to> | <from, to> <- g, !isEmpty(g2[to]), to.path != "/" };
@@ -206,10 +218,23 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m) {
     bool isStatic = (\static() in m@modifiers[meth]);
     bool isAbstract = (\abstract() in m@modifiers[meth]);
     str name = toList(((m@names<qualifiedName, simpleName>)[meth]))[0];
-    list[loc] params = toList({params | method(meth, params) <- p.decls})[0];
+    rel[loc, TypeSymbol] paramTypes =
+    {
+		<param, paramType> |
+		param <- m@containment[meth],
+		param.scheme == "java+parameter",
+		paramType <- m@types[param]
+	};
+	list[tuple[loc, TypeSymbol]] params =
+	[
+		<paramLoc, paramType> |
+		method(meth, paramLocs) <- methodParams,
+		paramLoc <- paramLocs,
+		paramType <- paramTypes[paramLoc]
+	];
     print (params);
     print("\n");
-    str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <\type>, <}>";
+    str paramStr = "<for (<param, \type> <- params) {><param.file> : <\type>, <}>";
     return "<getModifier(meth)> <if(isStatic){>\<u\><}><if(isAbstract){>\<i\><}><name>(<paramStr[..-2]>)<if(isAbstract){>\</i\><}><if(isStatic){>\</u\><}>";
   }
 
