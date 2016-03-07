@@ -103,7 +103,6 @@ OFG prop(OFG g, rel[loc,loc] gen, rel[loc,loc] kill, bool back) {
     };
     OUT = gen + (IN - kill);
   }
-  
   return OUT;
 }
 
@@ -137,11 +136,25 @@ public str dotOFGDiagram(OFG g, OFG g2) {
 
 public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
 
+  set[loc] allTypes = classes(m) + interfaces(m);
+  
+  rel[loc, loc] extends = { <from, to> |
+                            <from, to> <- m@extends,
+                            from <- allTypes,
+                            to <- allTypes};
+                            
+  rel[loc, loc] implements = { <from, to> |
+                               <from, to> <- m@implements,
+                               from <- allTypes,
+                               to <- allTypes};
+
   rel[loc, loc, loc] individualAssociations = {
     <field, class1, class2> |
     <class1, field> <- m@containment,
     <field, class2> <- g,
-    field <- fields(m)
+    field <- fields(m),
+    class1 <- allTypes,
+    class2 <- allTypes
   };
   
   rel[loc, loc] associations = {
@@ -195,14 +208,14 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
     <class1, method> <- m@containment,
     <var, class2> <- g,
     var <- variables(m) + parameters(m),
-    class2 <- classes(m)
+    class1 <- allTypes,
+    class2 <- allTypes
   };
   
   rel[loc, loc] dependencies = {
     <class1, class2> |
     <_, class1, class2> <- individualDependencies
   } - associations - m@extends<to, from> - identity;
-  
   
   rel[loc, loc] filterRelation(rel[loc,loc] relation, rel[loc,loc] subtypes) {
     rel[loc, loc] simplifications = {};
@@ -224,10 +237,10 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
     return filteredRelation;
   }
   
-  rel[loc, loc] filteredAssociations = filterRelation(associations, m@extends + m@implements);
+  rel[loc, loc] filteredAssociations = filterRelation(associations, extends + implements);
   
-  rel[loc, loc] filteredDependencies = filterRelation(dependencies, m@extends + m@implements) - 
-                                       filteredAssociations - m@extends<to, from> - identity;
+  rel[loc, loc] filteredDependencies = filterRelation(dependencies, extends + implements) - 
+                                       filteredAssociations - invert(extends) - identity;
     
   str classString(loc cl, bool interface) {
     return "\"N<cl>\" [
@@ -279,8 +292,20 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
   }
   
   str constString(loc class, loc const) {
-    str name = toList(((m@names<qualifiedName, simpleName>)[const]))[0];
-    list[loc] params = toList({params | constructor(const, params) <- p.decls})[0];
+    set[str] names = (m@names<qualifiedName, simpleName>)[const];
+    str name = "";
+    if (isEmpty(names)) {
+        name = "<const>";
+    } else {
+       name = toList(names)[0];
+    }
+    set[list[loc]] possibleParams = {params | constructor(const, params) <- p.decls};
+    list[loc] params = [];
+    if (isEmpty(possibleParams)) {
+        params = [];
+    } else {
+        params = toList(possibleParams)[0];
+    }
     str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <getVarType(class, param, \type)>, <}>";
     return "<getModifier(const)> <name>(<paramStr[..-2]>)";
   }
@@ -294,7 +319,13 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
     bool isStatic = (\static() in m@modifiers[meth]);
     bool isAbstract = (\abstract() in m@modifiers[meth]);
     str name = toList(((m@names<qualifiedName, simpleName>)[meth]))[0];
-    list[loc] params = toList({params | method(meth, params) <- p.decls})[0];
+    set[list[loc]] possibleParams = {params | method(meth, params) <- p.decls};
+    list[loc] params = [];
+    if (isEmpty(possibleParams)) {
+        params = [];
+    } else {
+        params = toList(possibleParams)[0];
+    }
     str paramStr = "<for (param <- params, <param, \type> <- m@typeDependency) {><param.file> : <getVarType(class, param, \type)>, <}>";
     return "<getModifier(meth)> <if(isStatic){>\<u\><}><if(isAbstract){>\<i\><}><name>(<paramStr[..-2]>)<if(isAbstract){>\</i\><}><if(isStatic){>\</u\><}>";
   }
@@ -325,9 +356,9 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter) {
          '  <classString(cl, true)>
          '  <}>
          '
-         '  <for (<to, from> <- m@extends) {>
+         '  <for (<to, from> <- extends) {>
          '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"empty\"]<}>
-         '  <for (<to, from> <- m@implements) {>
+         '  <for (<to, from> <- implements) {>
          '  \"N<to>\" -\> \"N<from>\" [style=\"dashed\", arrowhead=\"empty\"]<}>
          '  <for (<to, from> <- ass) {>
          '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"vee\" headlabel=\"<multiplicity(<from, to>)>\"]<}>
@@ -346,12 +377,12 @@ public void showDot(OFG g, FlowProgram p, M3 m, bool \filter, loc out) {
 public void showOFG(OFG g, OFG g2) = showOFG(g, g2, |home:///OFG.dot|);
 
 public void showOFG(OFG g, OFG g2, loc out) {
-  writeFile(out, dotOFGDiagram(g, g2, \filter));
+  writeFile(out, dotOFGDiagram(g, g2));
 }
 
 public void showOFG() {
-    m = createM3FromEclipseProject(|project://eLib|);
-    p = createOFG(|project://eLib|);
+    m = createM3FromEclipseProject(|project://CyberNeko1.9.21|);
+    p = createOFG(|project://CyberNeko1.9.21|);
     g = buildGraph(p);
     g2 = prop(g, buildForwardGen(p), {}, true);
     g3 = prop(g, buildBackwardGen(p), {}, false);
@@ -359,8 +390,8 @@ public void showOFG() {
 }
 
 public void showDot(bool \filter) {
-    m = createM3FromEclipseProject(|project://eLib|);
-    p = createOFG(|project://eLib|);
+    m = createM3FromEclipseProject(|project://CyberNeko1.9.21|);
+    p = createOFG(|project://CyberNeko1.9.21|);
     g = buildGraph(p);
     g2 = prop(g, buildForwardGen(p), {}, true);
     g3 = prop(g, buildBackwardGen(p), {}, false);
