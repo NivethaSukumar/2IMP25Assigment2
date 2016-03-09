@@ -262,7 +262,12 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
     Arity max = fixed(0);
     for (loc field <- fields) {
         max = arityPlus(max, fixed(1));
-        for(class(decl, _) <- m@types[field]) {
+        for(class(\decl, _) <- m@types[field]) {
+            if (\decl.path in containerClasses) {
+                max = inf();
+            }
+        }
+        for(interface(\decl, _) <- m@types[field]) {
             if (\decl.path in containerClasses) {
                 max = inf();
             }
