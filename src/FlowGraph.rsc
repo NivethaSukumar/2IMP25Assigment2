@@ -189,49 +189,6 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
     <_, class1, class2> <- individualAssociations
   };
   
-  str multiplicity(tuple[loc to, loc from] edge) {
-    tuple[Arity min, Arity max] m = calcMultiplicity(invert(individualAssociations)[edge.to][edge.from]);
-    return " \n <arityToString(m.min)>..<arityToString(m.max)> \n ";
-  }
-  
-  str arityToString(inf()) = "*";
-  str arityToString(fixed(int a)) = "<a>";
-  
-  set[str] containerClasses =  {
-     "/java/util/Map"
-    ,"/java/util/HashMap"
-    ,"/java/util/Collection"
-    ,"/java/util/Set"
-    ,"/java/util/HashSet"
-    ,"/java/util/LinkedHashSet"
-    ,"/java/util/List"
-    ,"/java/util/ArrayList"
-    ,"/java/util/LinkedList"
-  };
-  
-  set[str] mapClasses = {
-     "/java/util/Map"
-    ,"/java/util/HashMap"
-  };
-  
-  tuple[Arity, Arity] calcMultiplicity(set[loc] fields) {
-    Arity min = fixed(0);
-    Arity max = fixed(0);
-    for (loc field <- fields) {
-        loc \type = toList(m@typeDependency[field])[0];
-        if (\type.path in containerClasses) {
-            max = inf();
-        } else {
-            max = arityPlus(max, fixed(1));
-        }
-    }
-    return <min, max>;
-  }
-  
-  Arity arityPlus(fixed(int a), fixed(int b)) = fixed(a + b);
-  Arity arityPlus(inf(), fixed(int b)) = inf();
-  Arity arityPlus(fixed(int a), inf) = inf;
-  
   rel[loc, loc] identity = { <class, class> | class <- carrier(g) };
   
   rel[loc, loc, loc] individualDependencies = {
@@ -273,6 +230,49 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
   
   rel[loc, loc] filteredDependencies = filterRelation(dependencies, extends + implements) - 
                                        filteredAssociations - invert(extends) - identity;
+                                       
+                                         str multiplicity(tuple[loc to, loc from] edge) {
+  tuple[Arity min, Arity max] m = calcMultiplicity(invert(individualAssociations)[edge.to][edge.from]);
+    return " \n <arityToString(m.min)>..<arityToString(m.max)> \n ";
+  }
+  
+  str arityToString(inf()) = "*";
+  str arityToString(fixed(int a)) = "<a>";
+  
+  set[str] containerClasses =  {
+     "/java/util/Map"
+    ,"/java/util/HashMap"
+    ,"/java/util/Collection"
+    ,"/java/util/Set"
+    ,"/java/util/HashSet"
+    ,"/java/util/LinkedHashSet"
+    ,"/java/util/List"
+    ,"/java/util/ArrayList"
+    ,"/java/util/LinkedList"
+  };
+  
+  set[str] mapClasses = {
+     "/java/util/Map"
+    ,"/java/util/HashMap"
+  };
+  
+  tuple[Arity, Arity] calcMultiplicity(set[loc] fields) {
+    Arity min = fixed(0);
+    Arity max = fixed(0);
+    for (loc field <- fields) {
+        loc \type = toList(m@typeDependency[field])[0];
+        if (\type.path in containerClasses) {
+            max = inf();
+        } else {
+            max = arityPlus(max, fixed(1));
+        }
+    }
+    return <min, max>;
+  }
+  
+  Arity arityPlus(fixed(int a), fixed(int b)) = fixed(a + b);
+  Arity arityPlus(inf(), fixed(int b)) = inf();
+  Arity arityPlus(fixed(int a), inf) = inf;
     
   str classString(loc cl, bool interface) {
     str name = "";
