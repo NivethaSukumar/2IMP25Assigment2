@@ -17,7 +17,7 @@ import vis::Render;
 import Set;
 import String;
 
-loc project = |project://CyberNeko1.9.21|;
+loc project = |project://eLib|;
 
 set[Decl] createMethodParams(set[Declaration] asts) = {
     Decl::method(
