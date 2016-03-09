@@ -232,6 +232,7 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
                                        filteredAssociations - invert(extends) - identity;
                                        
                                          str multiplicity(tuple[loc to, loc from] edge) {
+                                        
   tuple[Arity min, Arity max] m = calcMultiplicity(invert(individualAssociations)[edge.to][edge.from]);
     return " \n <arityToString(m.min)>..<arityToString(m.max)> \n ";
   }
@@ -260,11 +261,11 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
     Arity min = fixed(0);
     Arity max = fixed(0);
     for (loc field <- fields) {
-        loc \type = toList(m@typeDependency[field])[0];
-        if (\type.path in containerClasses) {
-            max = inf();
-        } else {
-            max = arityPlus(max, fixed(1));
+        max = arityPlus(max, fixed(1));
+        for(class(decl, _) <- m@types[field]) {
+            if (\decl.path in containerClasses) {
+                max = inf();
+            }
         }
     }
     return <min, max>;
@@ -432,6 +433,13 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
   } else {
     shape = "shape = \"rectangle\"";
   }
+  
+  rel[loc, loc] innerClasses = {
+    <class1, class2> |
+    <class1, class2> <- m@containment,
+    class1 <- allTypes,
+    class2 <- allTypes
+  };
 
   return "digraph classes {
          '  overlap=prism overlap_scaling=0.01
@@ -455,7 +463,9 @@ public str dotDiagram(OFG g, FlowProgram p, M3 m, bool \filter, bool bareClasses
          '  <for (<to, from> <- ass) {>
          '  \"N<to>\" -\> \"N<from>\" [arrowhead=\"vee\" headlabel=\"<multiplicity(<from, to>)>\"]<}>
          '  <for (<to, from> <- dep) {>
-         '  \"N<to>\" -\> \"N<from>\" [style=\"dashed\", arrowhead=\"vee\"]<}><}>
+         '  \"N<to>\" -\> \"N<from>\" [style=\"dashed\", arrowhead=\"vee\"]<}>
+         '  <for (<to, from> <- innerClasses) {>
+         '  \"N<from>\" -\> \"N<to>\" [arrowhead=\"dot\"]<}><}>
          '}";
 }
 
