@@ -116,7 +116,7 @@ class PostHandler(xml.sax.ContentHandler):
 		else:
 			self.lastTimestampA = answerTime
 		
-		fa.write("%i, %i\n" % (parentId, responseTime))
+		fa.write("%i, %i\n" % (parentId, answerTime))
 		
 		del self.unansweredQuestions[parentId]
 	

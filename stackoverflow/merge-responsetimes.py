@@ -38,7 +38,7 @@ class PostHandler(xml.sax.ContentHandler):
 			body  = attr["Body"]
 			
 			if qid in questions:
-				resp  = questions[qid]
+				resp  = timestamp - questions[qid]
 				del questions[qid]
 					
 				self.fp.write(
@@ -61,7 +61,6 @@ class PostHandler(xml.sax.ContentHandler):
 # create dict from current responsetimes
 questions = {}
 with open(sys.argv[1], "r") as f:
-	f.readline()
 	for line in f:
 		qid, respTime = line.split(",")
 		questions[int(qid)] = int(respTime)

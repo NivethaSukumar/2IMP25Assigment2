@@ -34,12 +34,13 @@ class PostHandler(xml.sax.ContentHandler):
 	def startElement(self, name, attr):
 		if name == "row":
 			self.rows += 1
-			aid = int(attr["Id"])
-			
-			if aid in self.questions:
-				if self.questions[aid] > strToTime(attr["CreationDate"]):
-					self.questions[aid] = strToTime(attr["CreationDate"])
-					self.corrected+=1
+			if int(attr["PostTypeId"]) == 2:
+				aid = int(attr["ParentId"])
+				
+				if aid in self.questions:
+					if self.questions[aid] > strToTime(attr["CreationDate"]):
+						self.questions[aid] = strToTime(attr["CreationDate"])
+						self.corrected+=1
 			
 			if self.rows % 50000 == 0:
 				print(
@@ -56,7 +57,6 @@ class PostHandler(xml.sax.ContentHandler):
 # create dict from current responsetimes
 questions = {}
 with open(sys.argv[2], "r") as f:
-	f.readline()
 	for line in f:
 		qid, respTime = line.split(",")
 		questions[int(qid)] = int(respTime)

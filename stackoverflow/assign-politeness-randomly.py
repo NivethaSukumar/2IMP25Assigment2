@@ -23,7 +23,8 @@ class PostHandler(xml.sax.ContentHandler):
 		
 		fp.write("%i,%i,%i,%i,%i,%i,%i\n" % (
 				int(attr["Id"]),
-				random.randint(-1,1),
+				random.random(),
+				random.random()
 				int(attr["Score"]),
 				int(attr["ViewCount"]),
 				int(attr["FavoriteCount"]),
@@ -37,7 +38,7 @@ class PostHandler(xml.sax.ContentHandler):
 			print "processed %i rows" % self.rows
 
 with open(sys.argv[2], "w") as fp:
-	fp.write("Id,Politeness,Score,ViewCount,FavoriteCount,responsetime,timestamp\n")
+	fp.write("Id,positive,negative,Score,ViewCount,FavoriteCount,responsetime,timestamp\n")
 	handler = PostHandler(fp)
 	parser = xml.sax.make_parser()
 	parser.setContentHandler(handler)
